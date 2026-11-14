@@ -50,7 +50,8 @@ sealed class LoaderForm : Form
 
         // Рамка окна.
         using (var border = new Pen(Color.FromArgb(200, 0, 255, 255), 2f))
-            g.DrawPath(border, Round(ClientRectangle.X + 2, ClientRectangle.Y + 2, ClientRectangle.Width - 4, ClientRectangle.Height - 4, 16));
+        using (var path = Round(ClientRectangle.X + 2, ClientRectangle.Y + 2, ClientRectangle.Width - 4, ClientRectangle.Height - 4, 16))
+            g.DrawPath(border, path);
 
         // Заголовок.
         using (var titleFont = new Font("Consolas", 20f, FontStyle.Bold))
@@ -77,6 +78,12 @@ sealed class LoaderForm : Form
         double rad = angle * Math.PI / 180.0;
         using (var dot = new SolidBrush(Color.FromArgb(0, 255, 255)))
             g.FillEllipse(dot, cx + (float)Math.Cos(rad) * r - 4f, cy + (float)Math.Sin(rad) * r - 4f, 8f, 8f);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) anim.Dispose();
+        base.Dispose(disposing);
     }
 
     static GraphicsPath Round(float x, float y, float w, float h, float r)

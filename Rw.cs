@@ -20,7 +20,13 @@ static class Rw
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool DeviceIoControl(IntPtr d, uint c, IntPtr i, uint isz, IntPtr o, uint osz, out uint r, IntPtr ov);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
-    [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+    [StructLayout(LayoutKind.Sequential)]
+    struct MouseInput { public int Dx, Dy; public uint MouseData, Flags, Time; public UIntPtr ExtraInfo; }
+    [StructLayout(LayoutKind.Explicit)]
+    struct InputUnion { [FieldOffset(0)] public MouseInput Mouse; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct Input { public uint Type; public InputUnion Data; }
+    [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, ref Input inputs, int size);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h, int id, uint mod, uint vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h, int id);
@@ -84,7 +90,13 @@ static class Rw
     public static int I32(ulong address) => unchecked((int)U32(address));
     public static float F32(ulong address) => BitConverter.Int32BitsToSingle(I32(address));
     public static bool Key(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
-    public static void Mouse(int dx, int dy) => mouse_event(1, dx, dy, 0, UIntPtr.Zero);
+    public static bool Mouse(int dx, int dy, out int error)
+    {
+        var input = new Input { Data = new InputUnion { Mouse = new MouseInput { Dx = dx, Dy = dy, Flags = 1 } } };
+        bool sent = SendInput(1, ref input, Marshal.SizeOf<Input>()) == 1;
+        error = sent ? 0 : Marshal.GetLastWin32Error();
+        return sent;
+    }
     public static void Topmost(IntPtr h) => SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x53);
     public static void RegisterHk(IntPtr h, int id, uint vk) => RegisterHotKey(h, id, 0x4000, vk);
     public static void UnregisterHk(IntPtr h, int id) => UnregisterHotKey(h, id);

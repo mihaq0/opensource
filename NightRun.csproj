@@ -15,5 +15,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="scripts/**/*.cs" />
+    <Compile Remove="loader/**/*.cs" />
   </ItemGroup>
 </Project>

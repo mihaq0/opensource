@@ -30,6 +30,7 @@ sealed class OverlayForm : Form
     double lastPaint, lastReport, lastIdle;
     bool prevShift, pending, closing;
     Rectangle previousRegion;
+    bool previousMenuOpen;
     double paintFps;
     internal double Fps => paintFps;
     internal double lastPaintMs;
@@ -167,7 +168,10 @@ sealed class OverlayForm : Form
                 Snap snap = reader.Snap;
                 Rectangle next = Painter.Prepare(snap, MenuOpen);
                 if (MenuOpen) next = Union(next, Menu.Bounds);
-                Rectangle dirty = Union(previousRegion, next);
+                // Menu dragging changes its position during Draw, after Prepare calculated
+                // the dirty rectangle. Clear/present the entire surface while it is open
+                // and for the first frame after closing, so no old pixels survive.
+                Rectangle dirty = MenuOpen || previousMenuOpen ? ClientRectangle : Union(previousRegion, next);
                 dirty.Intersect(ClientRectangle);
                 if (!dirty.IsEmpty)
                 {
@@ -184,6 +188,7 @@ sealed class OverlayForm : Form
                     Update();
                 }
                 previousRegion = next;
+                previousMenuOpen = MenuOpen;
                 lastIdle = clock.Elapsed.TotalMilliseconds;
             }
         }
@@ -234,7 +239,7 @@ sealed class OverlayForm : Form
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nightrun_diag.log");
             if (File.Exists(path) && new FileInfo(path).Length > 1_000_000) File.Move(path, path + ".previous", true);
             var snap = reader.Snap;
-            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss} fps={Fps:0} refreshHz={1000 / framePeriod:0} paintMs={lastPaintMs:0.0} paintP95={p95:0.0} frameP95={frame95:0.0} readMs={reader.ReadMs:0.0} camAgeMs={snap.AgeMs:0.0} ents={snap.Ents.Length} ioctl/s={reads / Math.Max(0.001, seconds):0}\n");
+            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss} fps={Fps:0} refreshHz={1000 / framePeriod:0} paintMs={lastPaintMs:0.0} paintP95={p95:0.0} frameP95={frame95:0.0} readMs={reader.ReadMs:0.0} camAgeMs={snap.AgeMs:0.0} ents={snap.Ents.Length} aim={aim.AimStatus} ioctl/s={reads / Math.Max(0.001, seconds):0}\n");
         }
         catch (Exception ex) { GameReader.Log(ex); }
         Cfg.SaveIfDirty();

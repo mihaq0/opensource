@@ -89,18 +89,24 @@ sealed class AimBot
                 wasActive = true;
 
                 Snap s = reader.Snap;
-                if (!s.Cam.Valid || s.AgeMs > 100) { LockedId = -1; Thread.Sleep(8); continue; }
+                if (!s.Cam.Valid || s.AgeMs > 150)
+                {
+                    AimStatus = !s.Cam.Valid ? "camera unavailable" : "camera stale";
+                    LockedId = -1; accX = accY = 0; lostSince = DateTime.MinValue;
+                    Thread.Sleep(8); continue;
+                }
                 double focal = (sh / 2.0) / Math.Tan(s.Cam.Fov * Math.PI / 360.0);
 
                 Ent best = null; float bestDist = float.MaxValue;
                 Ent cur = null; float curDist = float.MaxValue, curX = 0, curY = 0;
-                int passed = 0;
+                int eligible = 0, passed = 0;
 
                 foreach (Ent e in s.Ents)
                 {
                     if (!e.Valid || !PassFilter(e, c, s.LocalId)) continue;
                     float d3 = MathV.Dist(new Vec { X = e.X, Y = e.Y, Z = e.Z }, new Vec { X = s.Cam.X, Y = s.Cam.Y, Z = s.Cam.Z });
                     if (c.MaxDist < 1000 && d3 > c.MaxDist) continue;
+                    eligible++;
                     Vec bp = Predicted(e, c.AimBone, c.AimLead);
                     if (!Project(s.Cam, bp, focal, out float px, out float py, out float d) || d < 0.4f) continue;
                     float dx = px - sw / 2f, dy = py - sh / 2f;
@@ -113,10 +119,17 @@ sealed class AimBot
                 if (cur != null)
                 {
                     lostSince = DateTime.MinValue;
-                    if (curDist > c.StickyRadius && best != null && bestDist < c.AimFov)
+                    if (curDist > Math.Max(c.StickyRadius, c.AimFov))
                     {
+                        if (best == null || bestDist > c.AimFov)
+                        {
+                            LockedId = -1; accX = accY = 0;
+                            AimStatus = "target outside radius";
+                            Thread.Sleep(4); continue;
+                        }
                         LockedId = best.Id;
                         curX = bestX; curY = bestY;
+                        cur = best;
                     }
                     else
                     {
@@ -149,7 +162,7 @@ sealed class AimBot
                     }
                     else
                     {
-                        AimStatus = passed > 0 ? "no target (fov " + c.AimFov + "px)" : "no target (filter)";
+                        AimStatus = passed > 0 ? "no target (fov " + c.AimFov + "px)" : eligible > 0 ? "no target (projection)" : "no target (filter/range)";
                         Thread.Sleep(4);
                         continue;
                     }
@@ -169,12 +182,24 @@ sealed class AimBot
                     int mx = (int)accX, my = (int)accY;
                     if (mx != 0 || my != 0)
                     {
-                        Rw.Mouse(mx, my);
+                        if (!Rw.Mouse(mx, my, out int error))
+                        {
+                            AimStatus = "input rejected (" + error + ")";
+                            accX = accY = 0;
+                            Thread.Sleep(50);
+                            continue;
+                        }
                         accX -= mx; accY -= my;
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AimStatus = "error: " + ex.GetType().Name;
+                LockedId = -1; accX = accY = 0;
+                GameReader.Log(ex);
+                Thread.Sleep(100);
+            }
             Thread.Sleep(4);
         }
     }
@@ -193,6 +218,6 @@ sealed class AimBot
         float uu = dx * c.Ux + dy * c.Uy + dz * c.Uz;
         sx = (float)(sw / 2.0 + rr / depth * focal);
         sy = (float)(sh / 2.0 - uu / depth * focal);
-        return true;
+        return float.IsFinite(sx) && float.IsFinite(sy);
     }
 }

@@ -65,11 +65,12 @@ sealed class Painter : IDisposable
         if (selfTest) Mark(100, 100, 450, 200);
         if (!snap.Cam.Valid || snap.AgeMs > 150)
         {
-            if (c.Fps || menuOpen) Mark(ov.Sw - 650, ov.Sh - 32, 650, 32);
+            if (c.Fps || menuOpen) Mark(ov.Sw - 650, ov.Sh - 50, 650, 50);
             return Region;
         }
         Cam cam = snap.Cam;
         double focal = (ov.Sh / 2.0) / Math.Tan(cam.Fov * Math.PI / 360.0);
+        Span<Vec> hitboxPoints = stackalloc Vec[4];
         if (Cfg.EspEnabled)
             foreach (var e in snap.Ents)
             {
@@ -93,8 +94,12 @@ sealed class Painter : IDisposable
                             Project(cam, b.X, b.Y, b.Z, focal, out float xx, out float yy, out _)) MarkLine(ax, ay, xx, yy);
                     }
                 if (c.Hitboxes)
-                    foreach (Vec point in new[] { AimBot.BonePoint(e, 0), AimBot.BonePoint(e, 1), AimBot.BonePoint(e, 2), SkeletonPoint(e, e.Pelvis) })
+                {
+                    hitboxPoints[0] = AimBot.BonePoint(e, 0); hitboxPoints[1] = AimBot.BonePoint(e, 1);
+                    hitboxPoints[2] = AimBot.BonePoint(e, 2); hitboxPoints[3] = SkeletonPoint(e, e.Pelvis);
+                    foreach (Vec point in hitboxPoints)
                         if (Project(cam, point.X, point.Y, point.Z, focal, out float px, out float py, out _)) Mark(px - h * 0.2f - 5, py - h * 0.2f - 5, h * 0.4f + 10, h * 0.4f + 10);
+                }
             }
         ordered.Sort((a, b) => b.Distance.CompareTo(a.Distance));
         if (c.Loot)
@@ -109,7 +114,7 @@ sealed class Painter : IDisposable
                     if (Project(cam, point.X, point.Y, point.Z, focal, out float x, out float y, out _)) Mark(x - 16, y - 16, 32, 32);
                 }
         if (c.Aim && menuOpen) Mark(ov.Sw / 2f - c.AimFov - 4, ov.Sh / 2f - c.AimFov - 4, c.AimFov * 2 + 8, c.AimFov * 2 + 8);
-        if (c.Fps || menuOpen) Mark(ov.Sw - 650, ov.Sh - 32, 650, 32);
+        if (c.Fps || menuOpen) Mark(ov.Sw - 650, ov.Sh - 50, 650, 50);
         return Region;
     }
 
@@ -336,6 +341,7 @@ sealed class Painter : IDisposable
             float dist = MathV.Dist(item.P, new Vec { X = cam.X, Y = cam.Y, Z = cam.Z });
             if (dist > c.LootDist) continue;
 
+            g.FillEllipse(Brush(Color.FromArgb(100, 245, 205, 90)), x - 2, y - 2, 4, 4);
             g.DrawLine(lp, x, y - 5, x + 5, y); g.DrawLine(lp, x + 5, y, x, y + 5);
             g.DrawLine(lp, x, y + 5, x - 5, y); g.DrawLine(lp, x - 5, y, x, y - 5);
             g.DrawString(item.Text + " " + (int)dist + "m", fTagS, Brush(lc), x + 8, y - 6);
@@ -351,6 +357,8 @@ sealed class Painter : IDisposable
         if (reader.Resolving) s = "RESOLVING  " + reader.Status + "  " + (int)(reader.ResolveProgress * 100) + "%";
         else if (!reader.AddressesValid) s = "OFFLINE  " + reader.Status;
         else s = "entities " + (entCount >= 0 ? entCount : frame.Ents.Length) + "   cam " + (int)frame.Cam.Fov + "\u00B0   " + reader.Status;
+        if (c.Loot)
+            g.DrawString("loot: " + frame.LootStatus, fTagS, Brush(Color.FromArgb(210, 245, 205, 90)), ov.Sw - 640, ov.Sh - 40);
         if (c.Aim) s += "   aim: " + aim.AimStatus;
         if (c.Fps) s += "   " + ov.Fps.ToString("0") + " fps";
 

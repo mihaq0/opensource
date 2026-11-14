@@ -11,19 +11,19 @@ sealed class MenuUI : IDisposable
     readonly GameReader reader;
     readonly AimBot aim;
 
-    readonly Font fTitle = new Font("Consolas", 12f, FontStyle.Bold);
-    readonly Font fText = new Font("Consolas", 8.5f);
-    readonly Font fVal = new Font("Consolas", 8.5f, FontStyle.Bold);
+    readonly Font fTitle = new Font("Segoe UI", 14f, FontStyle.Bold);
+    readonly Font fText = new Font("Segoe UI", 9f);
+    readonly Font fVal = new Font("Segoe UI", 9f, FontStyle.Bold);
     readonly Bitmap measureBitmap = new Bitmap(1, 1);
     readonly Graphics measureG;
 
-    static readonly Color Ac = Color.FromArgb(0, 255, 255);
-    static readonly Color Ac2 = Color.FromArgb(50, 150, 255);
-    static readonly Color Bg = Color.FromArgb(20, 0, 30);
-    static readonly Color Bg2 = Color.FromArgb(25, 15, 35);
-    static readonly Color Tx = Color.FromArgb(220, 255, 255);
-    static readonly Color Tx2 = Color.FromArgb(120, 180, 255);
-    static readonly Color Fld = Color.FromArgb(30, 10, 20, 30);
+    static readonly Color Ac = Color.FromArgb(110, 231, 202);
+    static readonly Color Ac2 = Color.FromArgb(100, 154, 244);
+    static readonly Color Bg = Color.FromArgb(17, 22, 30);
+    static readonly Color Bg2 = Color.FromArgb(26, 34, 45);
+    static readonly Color Tx = Color.FromArgb(235, 241, 246);
+    static readonly Color Tx2 = Color.FromArgb(149, 166, 183);
+    static readonly Color Fld = Color.FromArgb(255, 37, 47, 60);
 
     readonly string[] tabs = { "AIM", "ESP", "COLORS", "MISC" };
     int tab;
@@ -32,23 +32,17 @@ sealed class MenuUI : IDisposable
     float dragStartX, dragStartY, dragOrigX, dragOrigY;
     // Inertia after release
     float dragVelX, dragVelY;
-    float inertiaX, inertiaY; // current interpolated position during inertia
 
     float mx, my; bool mdown, mprev, mclick, released;
     // Button hover animation
     readonly Dictionary<int, float> hoverAnim = new Dictionary<int, float>(); // id -> hover progress 0-1 (0 = normal, 1 = hovered)
-    readonly HashSet<int> prevHoverIds = new HashSet<int>();
-    // Update hover animation progress for a given button id.
+    long animationTicks;
+    float animationStep = 1f / 60f;
     void UpdateHoverAnim(int id, bool isHover)
     {
-        // Target progress: 1 when hovered, otherwise decay towards 0.
-        float target = isHover ? 1f : 0f;
-        // Retrieve current progress; default 0.
         hoverAnim.TryGetValue(id, out float cur);
-        // Simple linear interpolation with a speed factor.
-        float speed = 0.15f; // per frame step (~60fps gives ~0.15 per frame for smooth.
-        if (Math.Abs(cur - target) < 0.01f) cur = target;
-        else cur = cur + (target - cur) * speed;
+        float target = isHover ? 1f : 0f;
+        cur += (target - cur) * (1f - MathF.Exp(-12f * animationStep));
         hoverAnim[id] = cur;
     }
 
@@ -58,19 +52,22 @@ sealed class MenuUI : IDisposable
         measureG = Graphics.FromImage(measureBitmap);
     }
 
-    public Rectangle Bounds => Rectangle.FromLTRB((int)Cfg.S.MenuX - 2, (int)Cfg.S.MenuY - 2, (int)Cfg.S.MenuX + 442, (int)Cfg.S.MenuY + 482);
+    public Rectangle Bounds => Rectangle.FromLTRB((int)Cfg.S.MenuX - 12, (int)Cfg.S.MenuY - 12, (int)Cfg.S.MenuX + (Cfg.S.NewGui ? 692 : 442), (int)Cfg.S.MenuY + (Cfg.S.NewGui ? 602 : 482));
 
     public void Draw(Graphics g)
     {
-        if (!ov.MenuOpen) { mprev = false; activeId = 0; return; }
+        if (!ov.MenuOpen) { mprev = false; activeId = 0; animationTicks = 0; dragVelX = dragVelY = 0; return; }
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        animationStep = animationTicks == 0 ? 1f / 60f : (float)Math.Clamp((now - animationTicks) / (double)System.Diagnostics.Stopwatch.Frequency, 0, 0.05);
+        animationTicks = now;
         var c = Cfg.S;
         if (c.NewGui)
         {
             // Новый неоновый интерфейс: увеличенные размеры, плавная анимация, тёмно-неоновая палитра.
-            UpdateInput((int)c.MenuX, (int)c.MenuY, 520, 550);
-            c.MenuX = Math.Clamp(c.MenuX, -470, Math.Max(-470, ov.Sw - 60));
+            UpdateInput((int)c.MenuX, (int)c.MenuY, 680, 590);
+            c.MenuX = Math.Clamp(c.MenuX, -620, Math.Max(-620, ov.Sw - 60));
             c.MenuY = Math.Clamp(c.MenuY, 0, Math.Max(0, ov.Sh - 60));
-            RenderMenuNeon(g, (int)c.MenuX, (int)c.MenuY, 520, 550);
+            RenderMenuNeon(g, (int)c.MenuX, (int)c.MenuY, 680, 590);
         }
         else
         {
@@ -158,8 +155,8 @@ sealed class MenuUI : IDisposable
             Cfg.S.MenuX = dragOrigX + (mx - dragStartX);
             Cfg.S.MenuY = dragOrigY + (my - dragStartY);
             // Calculate instantaneous velocity
-            dragVelX = Cfg.S.MenuX - prevMenuX;
-            dragVelY = Cfg.S.MenuY - prevMenuY;
+            dragVelX = Math.Clamp((Cfg.S.MenuX - prevMenuX) / Math.Max(animationStep, 0.001f), -1200f, 1200f);
+            dragVelY = Math.Clamp((Cfg.S.MenuY - prevMenuY) / Math.Max(animationStep, 0.001f), -1200f, 1200f);
         }
         else if (released && activeId == -1)
         {
@@ -167,41 +164,18 @@ sealed class MenuUI : IDisposable
             activeId = 0;
             Cfg.Touch();
         }
-        else if (activeId == 0 && (Math.Abs(dragVelX) > 0.5f || Math.Abs(dragVelY) > 0.5f))
+        else if (activeId == 0 && (Math.Abs(dragVelX) > 5f || Math.Abs(dragVelY) > 5f))
         {
             // Apply inertia with friction
-            Cfg.S.MenuX += dragVelX;
-            Cfg.S.MenuY += dragVelY;
-            dragVelX *= 0.92f; // friction
-            dragVelY *= 0.92f;
+            Cfg.S.MenuX += dragVelX * animationStep;
+            Cfg.S.MenuY += dragVelY * animationStep;
+            float friction = MathF.Exp(-8f * animationStep);
+            dragVelX *= friction;
+            dragVelY *= friction;
             Cfg.Touch();
         }
 
-        // Hover animation logic
-        HashSet<int> currentHoverIds = new HashSet<int>();
-        if (hotId != 0) currentHoverIds.Add(hotId);
-        foreach (var id in prevHoverIds)
-        {
-            if (id == 1000 || id == 1001) continue;
-            if (!currentHoverIds.Contains(id))
-            {
-                if (hoverAnim.TryGetValue(id, out var v))
-                {
-                    hoverAnim[id] = Math.Max(0, v - 0.15f);
-                    if (hoverAnim[id] <= 0) hoverAnim.Remove(id);
-                }
-            }
-        }
-        if (hotId != 0)
-        {
-            hoverAnim[hotId] = Math.Min(1, (hoverAnim.TryGetValue(hotId, out var v) ? v : 0) + 0.15f);
-        }
-        // Small button hover detection
-        if (Hover(px + pw - 82, py + 9, 34, 16)) hotId = 1000;
-        else if (Hover(px + pw - 44, py + 9, 30, 16)) hotId = 1001;
-        if (hotId != 0) currentHoverIds.Add(hotId);
-        prevHoverIds.Clear();
-        foreach (var id in currentHoverIds) prevHoverIds.Add(id);
+
     }
 
     bool Hover(float x, float y, float w, float h) => mx >= x && mx <= x + w && my >= y && my <= y + h;
@@ -218,8 +192,8 @@ sealed class MenuUI : IDisposable
     {
         var c = Cfg.S;
         var pt = ov.PointToClient(screenPt);
-        var cw = c.NewGui ? 520 : 430;
-        var ch = c.NewGui ? 550 : 470;
+        var cw = c.NewGui ? 680 : 430;
+        var ch = c.NewGui ? 590 : 470;
         return pt.X >= c.MenuX && pt.X <= c.MenuX + cw && pt.Y >= c.MenuY && pt.Y <= c.MenuY + ch;
     }
 
@@ -276,7 +250,7 @@ sealed class MenuUI : IDisposable
         float progress = hoverAnim.TryGetValue(btnId, out var hoverP) ? hoverP : 0f;
         Color bg = Color.FromArgb((int)(170 + 30 * progress), 24, 28, 40);
         // Slight size pulse on hover
-        float scale = 1f + 0.04f * progress;
+        float scale = 1f + 0.04f * progress - (isHover && mdown ? 0.05f : 0f);
         float w2 = w * scale;
         float h2 = h * scale;
         float dx = (w - w2) / 2f;
@@ -284,8 +258,6 @@ sealed class MenuUI : IDisposable
         using GraphicsPath path = Round(x + dx, y + dy, w2, h2, 4);
         g.FillPath(Brush(bg), path);
         g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), path);
-        g.FillPath(Brush(bg), p);
-        g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), p);
         g.DrawString(text, fText, Brush(on ? Ac : Tx), x + w / 2f - TextW(text) / 2f, y + 2);
     }
 
@@ -374,13 +346,11 @@ sealed class MenuUI : IDisposable
     {
         g.DrawString(label, fText, Brush(Tx), x, y);
         var c = Cfg.S.RoleColors[idx];
-        float px = x + w - 150;
-        float[] chans = { 0, 1, 2 };
+        float px = x + w - 185;
         for (int ch = 0; ch < 3; ch++)
         {
             float sx = px + ch * 50;
             int v = ch == 0 ? c.R : ch == 1 ? c.G : c.B;
-            Color bar = Color.FromArgb(v, 40, 40, 46);
             g.DrawString(v.ToString(), fText, Brush(Tx2), sx, y + 12);
             var r = new RectangleF(sx, y + 2, 46, 8);
             g.FillRectangle(Brush(Fld), r);
@@ -481,7 +451,8 @@ sealed class MenuUI : IDisposable
         int id = 400;
         g.DrawString("PID " + reader.GamePid + "   local id " + reader.LocalId + "   role " + Roles.Name(reader.LocalRole), fText, Brush(Tx), x, y); y += 16;
         g.DrawString("game 0x" + reader.Game.ToString("X") + "   updater 0x" + reader.Updater.ToString("X"), fText, Brush(Tx2), x, y); y += 16;
-        g.DrawString("fps " + (int)ov.Fps + "   status " + reader.Status, fText, Brush(Tx2), x, y); y += 20;
+        g.DrawString("fps " + (int)ov.Fps + "   status " + reader.Status, fText, Brush(Tx2), x, y); y += 18;
+        g.DrawString("aim: " + aim.AimStatus, fText, Brush(Tx2), x, y); y += 20;
         Section(g, ref y, x, w, "SESSION");
         Checkbox(g, ref y, x, w, "Show fps", ref c.Fps, id++);
         if (Hover(x, y, 120, 22) && mclick) reader.RequestResolve();
@@ -496,77 +467,76 @@ sealed class MenuUI : IDisposable
     {
         bool hv = Hover(x, y, w, h);
         if (hv) hotId = id;
-        using GraphicsPath p = Round(x, y, w, h, 5);
-        g.FillPath(Brush(hv ? Color.FromArgb(200, Ac2) : Fld), p);
+        UpdateHoverAnim(id, hv);
+        float progress = hoverAnim[id];
+        float scale = 1f + 0.035f * progress - (hv && mdown ? 0.05f : 0f);
+        using GraphicsPath p = Round(x + w * (1 - scale) / 2, y + h * (1 - scale) / 2, w * scale, h * scale, 5);
+        g.FillPath(Brush(Color.FromArgb((int)(30 + 170 * progress), Ac2)), p);
         g.DrawPath(Pen(Color.FromArgb(140, Ac), 1f), p);
         g.DrawString(text, fText, Brush(Tx), x + w / 2f - TextW(text) / 2f, y + 4);
     }
 
     void RenderMenuNeon(Graphics g, int x, int y, int w, int h)
     {
-        // Внешнее неоновое свечение окна.
-        using (GraphicsPath glow = Round(x - 10, y - 10, w + 20, h + 20, 16))
-            g.FillPath(new SolidBrush(Color.FromArgb(50, 0, 255, 255)), glow);
-
-        // Основной фон окна с акцентной полосой сверху.
-        using (GraphicsPath p = Round(x, y, w, h, 12))
+        using (GraphicsPath shadow = Round(x + 5, y + 7, w, h, 16))
+            g.FillPath(Brush(Color.FromArgb(115, 0, 0, 0)), shadow);
+        using (GraphicsPath panel = Round(x, y, w, h, 16))
         {
-            g.FillPath(new SolidBrush(Color.FromArgb(240, Bg.R, Bg.G, Bg.B)), p);
-            using (LinearGradientBrush gb = new LinearGradientBrush(new Rectangle(x, y, w, 4), Ac, Ac2, 90f))
-                g.FillRectangle(gb, x + 12, y, w - 24, 4);
+            g.FillPath(Brush(Bg), panel);
+            g.DrawPath(Pen(Color.FromArgb(85, 124, 151, 166), 1f), panel);
         }
-        // Рамка окна.
-        using (GraphicsPath p = Round(x, y, w, h, 12))
-            g.DrawPath(new Pen(Color.FromArgb(180, Ac), 1.6f), p);
 
-        // Заголовок.
-        using Font neonTitle = new Font("Consolas", 17f, FontStyle.Bold);
-        g.DrawString("NIGHT RUN", neonTitle, Brush(Tx), x + 20, y + 14);
-        using Font neonVer = new Font("Consolas", 9.5f, FontStyle.Bold);
-        g.DrawString("v2.0 NEON", neonVer, Brush(Ac2), x + 170, y + 19);
+        // Separate navigation from the settings so controls and status never overlap.
+        using (GraphicsPath sidebar = Round(x + 10, y + 10, 151, h - 20, 11))
+            g.FillPath(Brush(Bg2), sidebar);
+        g.DrawString("NIGHT", fTitle, Brush(Tx), x + 25, y + 22);
+        g.DrawString("RUN", fTitle, Brush(Ac), x + 25, y + 45);
+        g.DrawString("CONTROL PANEL", fText, Brush(Tx2), x + 25, y + 76);
+        g.DrawLine(Pen(Color.FromArgb(65, 110, 130, 145), 1f), x + 24, y + 101, x + 146, y + 101);
 
-        DrawStateChip(g, x + w - 190, y + 14, 160);
-
-        // Кнопки управления окном (X и HIDE) с анимацией наведения.
-        DrawSmallButtonNeon(g, x + w - 94, y + 12, 38, 24, "X", 9000);
-        if (Clicked(x + w - 94, y + 12, 38, 24)) { PanicAll(); ov.SetMenuOpen(false); }
-        DrawSmallButtonNeon(g, x + w - 138, y + 12, 38, 24, "HIDE", 9001);
-        if (Clicked(x + w - 138, y + 12, 38, 24)) ov.SetMenuOpen(false);
-
-        // Табы.
-        int tx = x + 20;
+        string[] descriptions = { "Targeting", "Overlay", "Appearance", "System" };
         for (int i = 0; i < tabs.Length; i++)
         {
-            int tw = TabWidth(tabs[i]) + 10;
-            bool on = tab == i;
-            bool hv = Hover(tx, y + 56, tw, 28);
-            if (hv) hotId = 200 + i;
-            UpdateHoverAnim(200 + i, hv || on);
-            float ha = hoverAnim.TryGetValue(200 + i, out var v) ? v : 0f;
-            using GraphicsPath tp = Round(tx, y + 56, tw, 28, 9);
-            g.FillPath(new SolidBrush(Color.FromArgb(30 + (int)(40 * ha), 0, 10, 20)), tp);
-            g.DrawPath(new Pen(Color.FromArgb(120 + (int)(135 * ha), on ? Ac : Tx2), 1.2f), tp);
-            g.DrawString(tabs[i], fText, Brush(on ? Color.FromArgb(255, 255, 255) : Color.FromArgb(150 + (int)(105 * ha), Tx2.R, Tx2.G, Tx2.B)), tx + tw / 2f - TextW(tabs[i]) / 2f, y + 65);
-            if (on) g.FillRectangle(new SolidBrush(Ac), tx + 6, y + 84, tw - 12, 3);
-            if (Clicked(tx, y + 56, tw, 28)) tab = i;
-            tx += tw + 10;
+            int by = y + 119 + i * 47;
+            bool selected = tab == i;
+            bool hover = Hover(x + 19, by, 133, 38);
+            UpdateHoverAnim(5000 + i, selected || hover);
+            float t = hoverAnim[5000 + i];
+            using GraphicsPath item = Round(x + 19, by, 133, 38, 8);
+            g.FillPath(Brush(Color.FromArgb(255, 30 + (int)(9 * t), 40 + (int)(16 * t), 52 + (int)(13 * t))), item);
+            if (selected) g.FillRectangle(Brush(Ac), x + 20, by + 9, 3, 20);
+            g.DrawString(tabs[i], fVal, Brush(selected ? Tx : Tx2), x + 31, by + 4);
+            g.DrawString(descriptions[i], fText, Brush(Tx2), x + 31, by + 19);
+            if (Clicked(x + 19, by, 133, 38)) { tab = i; activeId = 0; }
         }
-        g.DrawLine(new Pen(Color.FromArgb(70, Ac), 1f), x + 16, y + 92, x + w - 16, y + 92);
+        g.DrawString("RSHIFT  /  MENU", fText, Brush(Tx2), x + 25, y + h - 50);
+        g.DrawString("F9  /  PANIC", fText, Brush(Tx2), x + 25, y + h - 33);
 
-        int cy = y + 106;
+        string[] titles = { "Targeting", "Visual overlay", "Appearance", "System" };
+        string[] subtitles = { "Configure target selection and response", "Choose what appears on screen", "Customize overlay colors", "Session and diagnostics" };
+        g.DrawString(titles[tab], fTitle, Brush(Tx), x + 185, y + 22);
+        g.DrawString(subtitles[tab], fText, Brush(Tx2), x + 186, y + 53);
+        DrawStateChip(g, x + w - 194, y + 24, 76);
+        DrawSmallButtonNeon(g, x + w - 108, y + 20, 38, 26, "HIDE", 9001);
+        if (Clicked(x + w - 108, y + 20, 38, 26)) ov.SetMenuOpen(false);
+        DrawSmallButtonNeon(g, x + w - 60, y + 20, 38, 26, "X", 9000);
+        if (Clicked(x + w - 60, y + 20, 38, 26)) { PanicAll(); ov.SetMenuOpen(false); }
+        g.DrawLine(Pen(Color.FromArgb(70, 110, 130, 145), 1f), x + 185, y + 83, x + w - 23, y + 83);
+
+        int cy = y + 100;
         try
         {
             switch (tab)
             {
-                case 0: DrawAim(g, x + 20, cy, w - 40); break;
-                case 1: DrawEsp(g, x + 20, cy, w - 40); break;
-                case 2: DrawColors(g, x + 20, cy, w - 40); break;
-                default: DrawMisc(g, x + 20, cy, w - 40); break;
+                case 0: DrawAim(g, x + 185, cy, w - 210); break;
+                case 1: DrawEsp(g, x + 185, cy, w - 210); break;
+                case 2: DrawColors(g, x + 185, cy, w - 210); break;
+                default: DrawMisc(g, x + 185, cy, w - 210); break;
             }
         }
         catch (Exception ex) { GameReader.Log(ex); }
-
-        g.DrawString("RShift menu  |  F1 box  F2 aim  F3 skel  F9 panic  F10 exit", fText, Brush(Tx2), x + 20, y + h - 24);
+        g.DrawLine(Pen(Color.FromArgb(70, 110, 130, 145), 1f), x + 185, y + h - 36, x + w - 23, y + h - 36);
+        g.DrawString("F1 ESP   /   F2 AIM   /   F3 SKELETON   /   F10 EXIT", fText, Brush(Tx2), x + 185, y + h - 27);
     }
 
     void DrawSmallButtonNeon(Graphics g, float x, float y, float w, float h, string text, int btnId)
@@ -574,13 +544,13 @@ sealed class MenuUI : IDisposable
         // Кнопка с плавной анимацией наведения и лёгким масштабированием.
         bool isHover = Hover(x, y, w, h);
         UpdateHoverAnim(btnId, isHover);
-        float progress = hoverAnim.TryGetValue(btnId, out var p) ? p : 0f;
-        float scale = 1f + 0.06f * progress;
+        float progress = hoverAnim.TryGetValue(btnId, out var progressValue) ? progressValue : 0f;
+        float scale = 1f + 0.06f * progress - (isHover && mdown ? 0.05f : 0f);
         float w2 = w * scale, h2 = h * scale;
         float dx = (w - w2) / 2f, dy = (h - h2) / 2f;
         using GraphicsPath p = Round(x + dx, y + dy, w2, h2, 5);
-        g.FillPath(new SolidBrush(Color.FromArgb(150 + (int)(100 * progress), 10, 10, 20)), p);
-        g.DrawPath(new Pen(Color.FromArgb(80 + (int)(175 * progress), Ac), 1.2f), p);
+        g.FillPath(Brush(Color.FromArgb(150 + (int)(100 * progress), 10, 10, 20)), p);
+        g.DrawPath(Pen(Color.FromArgb(80 + (int)(175 * progress), Ac), 1.2f), p);
         g.DrawString(text, fText, Brush(Color.FromArgb(255, 240, 255, 255)), x + w / 2f - TextW(text) / 2f, y + 3);
     }
 
