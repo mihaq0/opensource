@@ -176,8 +176,7 @@ sealed class MenuUI : IDisposable
             Cfg.Touch();
         }
 
-        // Update hover animations for generic elements, but keep animation for persistent small buttons (IDs 1000, 1001)
-        var currentHoverIds = new HashSet<int>();
+        readonly HashSet<int> prevHoverIds = new HashSet<int>();
         if (hotId != 0) currentHoverIds.Add(hotId);
         foreach (var id in prevHoverIds)
         {
