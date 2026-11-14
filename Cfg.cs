@@ -89,6 +89,10 @@ class Cfg
         public bool Loot = false;
         public int LootDist = 400;
 
+        // Новые визуальные флаги (можно выключить через конфиг, чтобы вернуться к классическому виду)
+        public bool NewGui = true;
+        public bool EnhancedEsp = true;
+
         public bool Fps = true;
         public float MenuX = 40, MenuY = 40;
 
