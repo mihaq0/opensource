@@ -453,6 +453,12 @@ sealed class MenuUI : IDisposable
         g.DrawString("game 0x" + reader.Game.ToString("X") + "   updater 0x" + reader.Updater.ToString("X"), fText, Brush(Tx2), x, y); y += 16;
         g.DrawString("fps " + (int)ov.Fps + "   status " + reader.Status, fText, Brush(Tx2), x, y); y += 18;
         g.DrawString("aim: " + aim.AimStatus, fText, Brush(Tx2), x, y); y += 20;
+        if (c.Loot)
+        {
+            string[] details = reader.Snap.LootStatus.Split(';');
+            foreach (string detail in details) { g.DrawString(detail.Trim(), fText, Brush(Tx2), x, y); y += 17; }
+            g.DrawString($"loot visible {ov.Painter.LootVisible}  |  far {ov.Painter.LootFar}  |  behind {ov.Painter.LootBehind}  |  offscreen {ov.Painter.LootOffscreen}", fText, Brush(Tx2), x, y); y += 20;
+        }
         Section(g, ref y, x, w, "SESSION");
         Checkbox(g, ref y, x, w, "Show fps", ref c.Fps, id++);
         if (Hover(x, y, 120, 22) && mclick) reader.RequestResolve();

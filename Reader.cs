@@ -98,6 +98,8 @@ sealed class GameReader
     DateTime nextState, nextLoot;
     readonly byte[] entryBytes = new byte[160 * 24];
     readonly byte[] viewBytes = new byte[160 * 24];
+    const int MaxLootEntries = 512;
+    readonly byte[] lootEntryBytes = new byte[MaxLootEntries * 24];
     double lastReadMs;
     public double ReadMs => Volatile.Read(ref lastReadMs);
     volatile bool stop;
@@ -309,7 +311,10 @@ sealed class GameReader
                     loot = BuildLoot(worldAddress, out lootStatus);
                     nextLoot = DateTime.UtcNow.AddSeconds(1);
                 }
-                if (!c.Loot) loot = Array.Empty<LootItem>();
+                if (!c.Loot)
+                {
+                    loot = Array.Empty<LootItem>(); lootStatus = "disabled"; nextLoot = DateTime.MinValue;
+                }
 
                 var copy = new Ent[entities.Length];
                 for (int i = 0; i < copy.Length; i++) copy[i] = entities[i].Copy();
@@ -337,12 +342,16 @@ sealed class GameReader
     {
         if (!ResolveUpdaterFromGame())
         {
-            entities = Array.Empty<Ent>(); cachedBrain = 0; lastCache = DateTime.UtcNow;
+            entities = Array.Empty<Ent>(); cachedBrain = 0; worldAddress = 0;
+            loot = Array.Empty<LootItem>(); lootStatus = "world unavailable"; nextLoot = DateTime.MinValue;
+            lastCache = DateTime.UtcNow;
             return;
         }
         ulong model = Rw.U64(Updater + 0x18);
         LocalId = Rw.I32(Rw.U64(Rw.U64(model + 0xD0) + 0x20) + 0x38);
-        worldAddress = Rw.U64(model + 0x60);
+        ulong nextWorld = Rw.U64(model + 0x60);
+        if (nextWorld != worldAddress) { nextLoot = DateTime.MinValue; loot = Array.Empty<LootItem>(); }
+        worldAddress = nextWorld;
         var views = new Dictionary<int, ulong>();
         ulong dict = Rw.U64(Updater + 0x110);
         ulong entries = Rw.U64(dict + 0x18);
@@ -422,41 +431,46 @@ sealed class GameReader
         if (e.MaxHealth <= 0) e.MaxHealth = 100;
     }
 
-    static LootItem[] BuildLoot(ulong world, out string status)
+    LootItem[] BuildLoot(ulong world, out string status)
     {
-        List<LootItem> list = new List<LootItem>();
-        int dictionaries = 0, examined = 0, failed = 0;
+        var list = new List<LootItem>();
         if (world < 0x10000) { status = "world unavailable"; return Array.Empty<LootItem>(); }
-        void AddDict(ulong d, ulong trOff, string tag)
+
+        string AddDict(ulong dictOffset, ulong trOff, bool cargo)
         {
-            if (d < 0x10000) return;
-            ulong entries = Rw.U64(d + 0x18);
-            uint n = Rw.U32(d + 0x20);
-            if (entries < 0x10000) { failed++; return; }
-            dictionaries++;
-            ulong items = entries + 0x20;
+            string name = cargo ? "cargo" : "loot";
+            if (!Rw.U64(world + dictOffset, out ulong d) || d < 0x10000) return name + ": no dictionary";
+            if (!Rw.U32(d + 0x20, out uint count)) return name + ": count read failed";
+            if (count == 0) return name + ": empty";
+            if (!Rw.U64(d + 0x18, out ulong entries) || entries < 0x10000) return name + ": no entries";
+            int scanCount = (int)Math.Min(count, (uint)MaxLootEntries);
+            bool batchRead = Rw.ReadInto(entries + 0x20, lootEntryBytes.AsSpan(0, scanCount * 24));
+            int examined = 0, invalid = 0, found = 0, readFailed = 0;
             Span<byte> position = stackalloc byte[12];
-            for (int i = 0; i < n && i < 64; i++)
+            for (int i = 0; i < scanCount; i++)
             {
-                ulong e = items + (ulong)(i * 24);
-                if (Rw.I32(e) < 0) continue;
+                int offset = i * 24;
+                if (!batchRead && !Rw.ReadInto(entries + 0x20 + (ulong)offset, lootEntryBytes.AsSpan(offset, 24)))
+                { readFailed++; continue; }
+                if (BitConverter.ToInt32(lootEntryBytes, offset) < 0) continue;
                 examined++;
-                ulong obj = Rw.U64(e + 0x10);
-                if (obj < 0x10000) { failed++; continue; }
-                ulong tr = Rw.U64(obj + trOff);
-                if (tr < 0x10000 || !Rw.ReadInto(tr + 0x10, position)) { failed++; continue; }
+                ulong obj = BitConverter.ToUInt64(lootEntryBytes, offset + 16);
+                if (obj < 0x10000 || !Rw.U64(obj + trOff, out ulong tr) || tr < 0x10000 ||
+                    !Rw.ReadInto(tr + 0x10, position)) { invalid++; continue; }
                 float x = BitConverter.ToSingle(position), y = BitConverter.ToSingle(position[4..]), z = BitConverter.ToSingle(position[8..]);
-                if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z)) { failed++; continue; }
-                int id = Rw.I32(e + 8);
+                if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z)) { invalid++; continue; }
+                int id = BitConverter.ToInt32(lootEntryBytes, offset + 8);
                 int price = 0;
-                if (tag == "loot") { ulong bag = Rw.U64(obj + 0x30); ulong data = bag >= 0x10000 ? Rw.U64(bag + 0x10) : 0; if (data >= 0x10000) price = Rw.I32(data + 0x24); }
-                if (tag == "cargo") { ulong pts = Rw.U64(obj + 0x58); if (pts >= 0x10000) price = Rw.I32(pts + 0x18); }
-                list.Add(new LootItem { P = new Vec { X = x, Y = y, Z = z }, Text = (tag == "cargo" ? "C " : "$") + price + " #" + id });
+                if (!cargo) { ulong bag = Rw.U64(obj + 0x30); ulong data = bag >= 0x10000 ? Rw.U64(bag + 0x10) : 0; if (data >= 0x10000) price = Rw.I32(data + 0x24); }
+                else { ulong pts = Rw.U64(obj + 0x58); if (pts >= 0x10000) price = Rw.I32(pts + 0x18); }
+                list.Add(new LootItem { P = new Vec { X = x, Y = y, Z = z }, Text = (cargo ? "C " : "$") + price + " #" + id });
+                found++;
             }
+            return $"{name}: {found}/{examined}, bad={invalid}, readerr={readFailed}, slots={count}" + (count > MaxLootEntries ? $" (first {MaxLootEntries})" : "");
         }
-        AddDict(Rw.U64(world + 0x38), 0x20, "loot");
-        AddDict(Rw.U64(world + 0xC8), 0x30, "cargo");
-        status = $"{list.Count} found / {examined} entries, {failed} invalid, {dictionaries}/2 dictionaries";
+        string lootInfo = AddDict(0x38, 0x20, false);
+        string cargoInfo = AddDict(0xC8, 0x30, true);
+        status = lootInfo + "; " + cargoInfo;
         return list.ToArray();
     }
 

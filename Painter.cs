@@ -13,6 +13,9 @@ sealed class Painter : IDisposable
     internal Rectangle Region;
     Snap frame;
     readonly List<(Ent Entity, float Distance)> ordered = new List<(Ent, float)>(160);
+    readonly List<(LootItem Item, float X, float Y, float Distance)> visibleLoot = new();
+    internal int LootFar, LootBehind, LootOffscreen;
+    internal int LootVisible => visibleLoot.Count;
     static readonly bool selfTest = Environment.GetEnvironmentVariable("NR_SELFTEST") == "1";
 
     readonly Font fTagS = new Font("Segoe UI Semibold", 7f, FontStyle.Bold);
@@ -61,6 +64,8 @@ sealed class Painter : IDisposable
         frame = snap;
         Region = Rectangle.Empty;
         ordered.Clear();
+        visibleLoot.Clear();
+        LootFar = LootBehind = LootOffscreen = 0;
         var c = Cfg.S;
         if (selfTest) Mark(100, 100, 450, 200);
         if (!snap.Cam.Valid || snap.AgeMs > 150)
@@ -103,9 +108,19 @@ sealed class Painter : IDisposable
             }
         ordered.Sort((a, b) => b.Distance.CompareTo(a.Distance));
         if (c.Loot)
+        {
+            Vec cameraPosition = new Vec { X = cam.X, Y = cam.Y, Z = cam.Z };
             foreach (var item in snap.Loot)
-                if (Project(cam, item.P.X, item.P.Y, item.P.Z, focal, out float x, out float y, out _) &&
-                    MathV.Dist(item.P, new Vec { X = cam.X, Y = cam.Y, Z = cam.Z }) <= c.LootDist) Mark(x - 8, y - 10, 300, 30);
+            {
+                float distance = MathV.Dist(item.P, cameraPosition);
+                if (!float.IsFinite(distance) || distance > c.LootDist) { LootFar++; continue; }
+                if (!Project(cam, item.P.X, item.P.Y, item.P.Z, focal, out float x, out float y, out float depth) || depth <= 0.3f)
+                { LootBehind++; continue; }
+                if (x < -300 || x > ov.Sw + 8 || y < -30 || y > ov.Sh + 10) { LootOffscreen++; continue; }
+                visibleLoot.Add((item, x, y, distance));
+                Mark(x - 8, y - 10, 300, 30);
+            }
+        }
         if (c.Aim && aim.LockedId >= 0)
             foreach (var e in snap.Ents)
                 if (e.Id == aim.LockedId)
@@ -132,7 +147,7 @@ sealed class Painter : IDisposable
         Cam cam = snap.Cam;
         if (!cam.Valid || snap.AgeMs > 150) { if (c.Fps || menuOpen) DrawStatus(g, -1); return; }
         double focal = (ov.Sh / 2.0) / Math.Tan(cam.Fov * Math.PI / 360.0);
-        if (c.Loot) DrawLoot(g, snap, cam, focal);
+        if (c.Loot) DrawLoot(g);
         foreach (var item in ordered) DrawEntity(g, item.Entity, cam, focal, item.Distance);
 
         if (aim.LockedId >= 0)
@@ -329,22 +344,17 @@ sealed class Painter : IDisposable
         g.DrawEllipse(Pen(ac, 1f), ov.Sw / 2f - Cfg.S.AimFov, ov.Sh / 2f - Cfg.S.AimFov, Cfg.S.AimFov * 2, Cfg.S.AimFov * 2);
     }
 
-    void DrawLoot(Graphics g, Snap snap, Cam cam, double focal)
+    void DrawLoot(Graphics g)
     {
-        var c = Cfg.S;
         Color lc = Color.FromArgb(235, 245, 205, 90);
         Pen lp = Pen(Color.FromArgb(220, 245, 205, 90), 1.4f);
-        foreach (LootItem item in snap.Loot)
+        foreach (var item in visibleLoot)
         {
-            if (!MathV.Finite(item.P)) continue;
-            if (!Project(cam, item.P.X, item.P.Y, item.P.Z, focal, out float x, out float y, out float d) || d <= 0.3f) continue;
-            float dist = MathV.Dist(item.P, new Vec { X = cam.X, Y = cam.Y, Z = cam.Z });
-            if (dist > c.LootDist) continue;
-
+            float x = item.X, y = item.Y;
             g.FillEllipse(Brush(Color.FromArgb(100, 245, 205, 90)), x - 2, y - 2, 4, 4);
             g.DrawLine(lp, x, y - 5, x + 5, y); g.DrawLine(lp, x + 5, y, x, y + 5);
             g.DrawLine(lp, x, y + 5, x - 5, y); g.DrawLine(lp, x - 5, y, x, y - 5);
-            g.DrawString(item.Text + " " + (int)dist + "m", fTagS, Brush(lc), x + 8, y - 6);
+            g.DrawString(item.Item.Text + " " + (int)item.Distance + "m", fTagS, Brush(lc), x + 8, y - 6);
         }
     }
 
@@ -358,7 +368,7 @@ sealed class Painter : IDisposable
         else if (!reader.AddressesValid) s = "OFFLINE  " + reader.Status;
         else s = "entities " + (entCount >= 0 ? entCount : frame.Ents.Length) + "   cam " + (int)frame.Cam.Fov + "\u00B0   " + reader.Status;
         if (c.Loot)
-            g.DrawString("loot: " + frame.LootStatus, fTagS, Brush(Color.FromArgb(210, 245, 205, 90)), ov.Sw - 640, ov.Sh - 40);
+            g.DrawString($"loot: {frame.Loot.Length} found, {LootVisible} visible, {LootFar} far, {LootBehind} behind, {LootOffscreen} offscreen", fTagS, Brush(Color.FromArgb(210, 245, 205, 90)), ov.Sw - 640, ov.Sh - 40);
         if (c.Aim) s += "   aim: " + aim.AimStatus;
         if (c.Fps) s += "   " + ov.Fps.ToString("0") + " fps";
 

@@ -239,7 +239,7 @@ sealed class OverlayForm : Form
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nightrun_diag.log");
             if (File.Exists(path) && new FileInfo(path).Length > 1_000_000) File.Move(path, path + ".previous", true);
             var snap = reader.Snap;
-            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss} fps={Fps:0} refreshHz={1000 / framePeriod:0} paintMs={lastPaintMs:0.0} paintP95={p95:0.0} frameP95={frame95:0.0} readMs={reader.ReadMs:0.0} camAgeMs={snap.AgeMs:0.0} ents={snap.Ents.Length} aim={aim.AimStatus} ioctl/s={reads / Math.Max(0.001, seconds):0}\n");
+            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss} fps={Fps:0} refreshHz={1000 / framePeriod:0} paintMs={lastPaintMs:0.0} paintP95={p95:0.0} frameP95={frame95:0.0} readMs={reader.ReadMs:0.0} camAgeMs={snap.AgeMs:0.0} ents={snap.Ents.Length} aim={aim.AimStatus} lootEnabled={Cfg.S.Loot} loot=[{snap.LootStatus}] lootVisible={Painter.LootVisible} lootFar={Painter.LootFar} lootBehind={Painter.LootBehind} lootOffscreen={Painter.LootOffscreen} cameraValid={snap.Cam.Valid} ioctl/s={reads / Math.Max(0.001, seconds):0}\n");
         }
         catch (Exception ex) { GameReader.Log(ex); }
         Cfg.SaveIfDirty();

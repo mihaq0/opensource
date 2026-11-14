@@ -82,11 +82,14 @@ static class Rw
         return ok;
     }
     public static ulong U64(ulong address) { U64(address, out ulong value); return value; }
-    public static uint U32(ulong address)
+    public static bool U32(ulong address, out uint value)
     {
         Span<byte> bytes = stackalloc byte[4];
-        return ReadInto(address, bytes) ? BitConverter.ToUInt32(bytes) : 0;
+        bool ok = ReadInto(address, bytes);
+        value = ok ? BitConverter.ToUInt32(bytes) : 0;
+        return ok;
     }
+    public static uint U32(ulong address) { U32(address, out uint value); return value; }
     public static int I32(ulong address) => unchecked((int)U32(address));
     public static float F32(ulong address) => BitConverter.Int32BitsToSingle(I32(address));
     public static bool Key(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
