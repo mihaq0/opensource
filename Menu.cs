@@ -284,8 +284,6 @@ sealed class MenuUI : IDisposable
         using GraphicsPath path = Round(x + dx, y + dy, w2, h2, 4);
         g.FillPath(Brush(bg), path);
         g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), path);
-        g.FillPath(Brush(bg), p);
-        g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), p);
         g.DrawString(text, fText, Brush(on ? Ac : Tx), x + w / 2f - TextW(text) / 2f, y + 2);
     }
 
@@ -496,9 +494,12 @@ sealed class MenuUI : IDisposable
     {
         bool hv = Hover(x, y, w, h);
         if (hv) hotId = id;
-        using GraphicsPath p = Round(x, y, w, h, 5);
-        g.FillPath(Brush(hv ? Color.FromArgb(200, Ac2) : Fld), p);
-        g.DrawPath(Pen(Color.FromArgb(140, Ac), 1f), p);
+        float progress = hoverAnim.TryGetValue(id, out float v) ? v : 0f;
+        Color fill = Color.Lerp(Fld, Color.FromArgb(200, Ac2), progress);
+        Color stroke = Color.Lerp(Color.FromArgb(140, Ac), Color.FromArgb(255, Ac), progress);
+        using GraphicsPath path = Round(x, y, w, h, 5);
+        g.FillPath(Brush(fill), path);
+        g.DrawPath(Pen(stroke, 1f), path);
         g.DrawString(text, fText, Brush(Tx), x + w / 2f - TextW(text) / 2f, y + 4);
     }
 
@@ -574,13 +575,13 @@ sealed class MenuUI : IDisposable
         // Кнопка с плавной анимацией наведения и лёгким масштабированием.
         bool isHover = Hover(x, y, w, h);
         UpdateHoverAnim(btnId, isHover);
-        float progress = hoverAnim.TryGetValue(btnId, out var p) ? p : 0f;
+        float progress = hoverAnim.TryGetValue(btnId, out var prog) ? prog : 0f;
         float scale = 1f + 0.06f * progress;
         float w2 = w * scale, h2 = h * scale;
         float dx = (w - w2) / 2f, dy = (h - h2) / 2f;
-        using GraphicsPath p = Round(x + dx, y + dy, w2, h2, 5);
-        g.FillPath(new SolidBrush(Color.FromArgb(150 + (int)(100 * progress), 10, 10, 20)), p);
-        g.DrawPath(new Pen(Color.FromArgb(80 + (int)(175 * progress), Ac), 1.2f), p);
+        using GraphicsPath path = Round(x + dx, y + dy, w2, h2, 5);
+        g.FillPath(new SolidBrush(Color.FromArgb(150 + (int)(100 * progress), 10, 10, 20)), path);
+        g.DrawPath(new Pen(Color.FromArgb(80 + (int)(175 * progress), Ac), 1.2f), path);
         g.DrawString(text, fText, Brush(Color.FromArgb(255, 240, 255, 255)), x + w / 2f - TextW(text) / 2f, y + 3);
     }
 

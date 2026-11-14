@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Linq;
+using System.Windows.Forms;
 
 namespace NightRun;
 
