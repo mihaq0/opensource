@@ -20,7 +20,7 @@ sealed class LoaderForm : Form
         BackColor = Color.FromArgb(15, 0, 25);
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
 
-        anim = new Timer { Interval = 16 };
+        anim = new System.Windows.Forms.Timer { Interval = 16 };
         anim.Tick += (_, _) => { angle += 6f; if (angle >= 360f) angle = 0f; Invalidate(); };
         anim.Start();
     }
