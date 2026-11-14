@@ -95,6 +95,16 @@ static class Program
         var aim = new AimBot(reader, screen.Width, screen.Height);
         aim.Start();
 
+        // Показать окно загрузчика перед основным оверлеем
+        using (var loader = new LoaderForm())
+        {
+            loader.Show();
+            loader.BringToFront();
+            Application.DoEvents();
+            Thread.Sleep(500);
+            loader.Close();
+        }
+
         using var form = new OverlayForm(reader, aim);
         try { Application.Run(form); }
         finally { reader.Stop(); aim.Stop(); Rw.Detach(); }

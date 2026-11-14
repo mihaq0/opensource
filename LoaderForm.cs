@@ -9,7 +9,7 @@ namespace NightRun;
 // Показывается перед запуском основного оверлея, затем закрывается.
 sealed class LoaderForm : Form
 {
-    readonly Timer anim;
+    readonly System.Windows.Forms.Timer anim;
     float angle;
 
     public LoaderForm()
