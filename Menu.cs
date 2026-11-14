@@ -17,13 +17,13 @@ sealed class MenuUI : IDisposable
     readonly Bitmap measureBitmap = new Bitmap(1, 1);
     readonly Graphics measureG;
 
-    static readonly Color Ac = Color.FromArgb(96, 186, 255);
-    static readonly Color Ac2 = Color.FromArgb(58, 132, 200);
-    static readonly Color Bg = Color.FromArgb(238, 13, 15, 22);
-    static readonly Color Bg2 = Color.FromArgb(240, 19, 22, 32);
-    static readonly Color Tx = Color.FromArgb(215, 225, 240);
-    static readonly Color Tx2 = Color.FromArgb(120, 130, 150);
-    static readonly Color Fld = Color.FromArgb(255, 26, 30, 42);
+    static readonly Color Ac = Color.FromArgb(0, 255, 255);
+    static readonly Color Ac2 = Color.FromArgb(50, 150, 255);
+    static readonly Color Bg = Color.FromArgb(20, 0, 30);
+    static readonly Color Bg2 = Color.FromArgb(25, 15, 35);
+    static readonly Color Tx = Color.FromArgb(220, 255, 255);
+    static readonly Color Tx2 = Color.FromArgb(120, 180, 255);
+    static readonly Color Fld = Color.FromArgb(30, 10, 20, 30);
 
     readonly string[] tabs = { "AIM", "ESP", "COLORS", "MISC" };
     int tab;
@@ -63,13 +63,25 @@ sealed class MenuUI : IDisposable
     {
         if (!ov.MenuOpen) { mprev = false; activeId = 0; return; }
         var c = Cfg.S;
-        UpdateInput((int)c.MenuX, (int)c.MenuY, 430, 470);
-        c.MenuX = Math.Clamp(c.MenuX, -370, Math.Max(-370, ov.Sw - 60));
-        c.MenuY = Math.Clamp(c.MenuY, 0, Math.Max(0, ov.Sh - 40));
-        RenderMenu(g, (int)c.MenuX, (int)c.MenuY, 430, 470);
+        if (c.NewGui)
+        {
+            // Новый неоновый интерфейс: увеличенные размеры, плавная анимация, тёмно-неоновая палитра.
+            UpdateInput((int)c.MenuX, (int)c.MenuY, 520, 550);
+            c.MenuX = Math.Clamp(c.MenuX, -470, Math.Max(-470, ov.Sw - 60));
+            c.MenuY = Math.Clamp(c.MenuY, 0, Math.Max(0, ov.Sh - 60));
+            RenderMenuNeon(g, (int)c.MenuX, (int)c.MenuY, 520, 550);
+        }
+        else
+        {
+            // Классический интерфейс (логика без изменений, сохранена совместимость с конфигом).
+            UpdateInput((int)c.MenuX, (int)c.MenuY, 430, 470);
+            c.MenuX = Math.Clamp(c.MenuX, -370, Math.Max(-370, ov.Sw - 60));
+            c.MenuY = Math.Clamp(c.MenuY, 0, Math.Max(0, ov.Sh - 40));
+            RenderMenuClassic(g, (int)c.MenuX, (int)c.MenuY, 430, 470);
+        }
     }
 
-    void RenderMenu(Graphics g, int x, int y, int w, int h)
+    void RenderMenuClassic(Graphics g, int x, int y, int w, int h)
     {
 
         using (GraphicsPath sh = Round(x + 4, y + 6, w, h, 10)) g.FillPath(Brush(Color.FromArgb(90, 0, 0, 0)), sh);
@@ -208,7 +220,9 @@ sealed class MenuUI : IDisposable
     {
         var c = Cfg.S;
         var pt = ov.PointToClient(screenPt);
-        return pt.X >= c.MenuX && pt.X <= c.MenuX + 430 && pt.Y >= c.MenuY && pt.Y <= c.MenuY + 470;
+        var cw = c.NewGui ? 520 : 430;
+        var ch = c.NewGui ? 550 : 470;
+        return pt.X >= c.MenuX && pt.X <= c.MenuX + cw && pt.Y >= c.MenuY && pt.Y <= c.MenuY + ch;
     }
 
     void FloatSlider(Graphics g, ref int y, float x, int w, string label, ref float val, float min, float max, int id, string suffix = "")
@@ -486,6 +500,88 @@ sealed class MenuUI : IDisposable
         g.FillPath(Brush(hv ? Color.FromArgb(200, Ac2) : Fld), p);
         g.DrawPath(Pen(Color.FromArgb(140, Ac), 1f), p);
         g.DrawString(text, fText, Brush(Tx), x + w / 2f - TextW(text) / 2f, y + 4);
+    }
+
+    void RenderMenuNeon(Graphics g, int x, int y, int w, int h)
+    {
+        // Внешнее неоновое свечение окна.
+        using (GraphicsPath glow = Round(x - 10, y - 10, w + 20, h + 20, 16))
+            g.FillPath(new SolidBrush(Color.FromArgb(50, 0, 255, 255)), glow);
+
+        // Основной фон окна с акцентной полосой сверху.
+        using (GraphicsPath p = Round(x, y, w, h, 12))
+        {
+            g.FillPath(new SolidBrush(Color.FromArgb(240, Bg.R, Bg.G, Bg.B)), p);
+            using (LinearGradientBrush gb = new LinearGradientBrush(new Rectangle(x, y, w, 4), Ac, Ac2, 90f))
+                g.FillRectangle(gb, x + 12, y, w - 24, 4);
+        }
+        // Рамка окна.
+        using (GraphicsPath p = Round(x, y, w, h, 12))
+            g.DrawPath(new Pen(Color.FromArgb(180, Ac), 1.6f), p);
+
+        // Заголовок.
+        using Font neonTitle = new Font("Consolas", 17f, FontStyle.Bold);
+        g.DrawString("NIGHT RUN", neonTitle, Brush(Tx), x + 20, y + 14);
+        using Font neonVer = new Font("Consolas", 9.5f, FontStyle.Bold);
+        g.DrawString("v2.0 NEON", neonVer, Brush(Ac2), x + 170, y + 19);
+
+        DrawStateChip(g, x + w - 190, y + 14, 160);
+
+        // Кнопки управления окном (X и HIDE) с анимацией наведения.
+        DrawSmallButtonNeon(g, x + w - 94, y + 12, 38, 24, "X", 9000);
+        if (Clicked(x + w - 94, y + 12, 38, 24)) { PanicAll(); ov.SetMenuOpen(false); }
+        DrawSmallButtonNeon(g, x + w - 138, y + 12, 38, 24, "HIDE", 9001);
+        if (Clicked(x + w - 138, y + 12, 38, 24)) ov.SetMenuOpen(false);
+
+        // Табы.
+        int tx = x + 20;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            int tw = TabWidth(tabs[i]) + 10;
+            bool on = tab == i;
+            bool hv = Hover(tx, y + 56, tw, 28);
+            if (hv) hotId = 200 + i;
+            UpdateHoverAnim(200 + i, hv || on);
+            float ha = hoverAnim.TryGetValue(200 + i, out var v) ? v : 0f;
+            using GraphicsPath tp = Round(tx, y + 56, tw, 28, 9);
+            g.FillPath(new SolidBrush(Color.FromArgb(30 + (int)(40 * ha), 0, 10, 20)), tp);
+            g.DrawPath(new Pen(Color.FromArgb(120 + (int)(135 * ha), on ? Ac : Tx2), 1.2f), tp);
+            g.DrawString(tabs[i], fText, Brush(on ? Color.FromArgb(255, 255, 255) : Color.FromArgb(150 + (int)(105 * ha), Tx2.R, Tx2.G, Tx2.B)), tx + tw / 2f - TextW(tabs[i]) / 2f, y + 65);
+            if (on) g.FillRectangle(new SolidBrush(Ac), tx + 6, y + 84, tw - 12, 3);
+            if (Clicked(tx, y + 56, tw, 28)) tab = i;
+            tx += tw + 10;
+        }
+        g.DrawLine(new Pen(Color.FromArgb(70, Ac), 1f), x + 16, y + 92, x + w - 16, y + 92);
+
+        int cy = y + 106;
+        try
+        {
+            switch (tab)
+            {
+                case 0: DrawAim(g, x + 20, cy, w - 40); break;
+                case 1: DrawEsp(g, x + 20, cy, w - 40); break;
+                case 2: DrawColors(g, x + 20, cy, w - 40); break;
+                default: DrawMisc(g, x + 20, cy, w - 40); break;
+            }
+        }
+        catch (Exception ex) { GameReader.Log(ex); }
+
+        g.DrawString("RShift menu  |  F1 box  F2 aim  F3 skel  F9 panic  F10 exit", fText, Brush(Tx2), x + 20, y + h - 24);
+    }
+
+    void DrawSmallButtonNeon(Graphics g, float x, float y, float w, float h, string text, int btnId)
+    {
+        // Кнопка с плавной анимацией наведения и лёгким масштабированием.
+        bool isHover = Hover(x, y, w, h);
+        UpdateHoverAnim(btnId, isHover);
+        float progress = hoverAnim.TryGetValue(btnId, out var p) ? p : 0f;
+        float scale = 1f + 0.06f * progress;
+        float w2 = w * scale, h2 = h * scale;
+        float dx = (w - w2) / 2f, dy = (h - h2) / 2f;
+        using GraphicsPath p = Round(x + dx, y + dy, w2, h2, 5);
+        g.FillPath(new SolidBrush(Color.FromArgb(150 + (int)(100 * progress), 10, 10, 20)), p);
+        g.DrawPath(new Pen(Color.FromArgb(80 + (int)(175 * progress), Ac), 1.2f), p);
+        g.DrawString(text, fText, Brush(Color.FromArgb(255, 240, 255, 255)), x + w / 2f - TextW(text) / 2f, y + 3);
     }
 
     readonly Dictionary<int, SolidBrush> bs = new Dictionary<int, SolidBrush>();
