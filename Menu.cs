@@ -37,6 +37,7 @@ sealed class MenuUI : IDisposable
     float mx, my; bool mdown, mprev, mclick, released;
     // Button hover animation
     readonly Dictionary<int, float> hoverAnim = new Dictionary<int, float>(); // id -> hover progress 0-1 (0 = normal, 1 = hovered)
+    readonly HashSet<int> prevHoverIds = new HashSet<int>();
     // Update hover animation progress for a given button id.
     void UpdateHoverAnim(int id, bool isHover)
     {
@@ -176,11 +177,11 @@ sealed class MenuUI : IDisposable
             Cfg.Touch();
         }
 
-        readonly HashSet<int> prevHoverIds = new HashSet<int>();
+        // Hover animation logic
+        HashSet<int> currentHoverIds = new HashSet<int>();
         if (hotId != 0) currentHoverIds.Add(hotId);
         foreach (var id in prevHoverIds)
         {
-            // Skip decay for persistent small buttons to retain their hover visual when another UI element becomes hot
             if (id == 1000 || id == 1001) continue;
             if (!currentHoverIds.Contains(id))
             {
@@ -196,10 +197,8 @@ sealed class MenuUI : IDisposable
             hoverAnim[hotId] = Math.Min(1, (hoverAnim.TryGetValue(hotId, out var v) ? v : 0) + 0.15f);
         }
         // Small button hover detection
-        if (Hover(px + pw - 82, py + 9, 34, 16)) hotId = 1000; else if (Hover(px + pw - 44, py + 9, 30, 16)) hotId = 1001;
-        // Register these ids for animation handling
-        if (hotId != 0) currentHoverIds.Add(hotId);
-        // Register these ids for animation handling
+        if (Hover(px + pw - 82, py + 9, 34, 16)) hotId = 1000;
+        else if (Hover(px + pw - 44, py + 9, 30, 16)) hotId = 1001;
         if (hotId != 0) currentHoverIds.Add(hotId);
         prevHoverIds.Clear();
         foreach (var id in currentHoverIds) prevHoverIds.Add(id);
@@ -274,7 +273,7 @@ sealed class MenuUI : IDisposable
         // Update hover animation for this button
         bool isHover = Hover(x, y, w, h);
         UpdateHoverAnim(btnId, isHover);
-        float progress = hoverAnim.TryGetValue(btnId, out var p) ? p : 0f;
+        float progress = hoverAnim.TryGetValue(btnId, out var hoverP) ? hoverP : 0f;
         Color bg = Color.FromArgb((int)(170 + 30 * progress), 24, 28, 40);
         // Slight size pulse on hover
         float scale = 1f + 0.04f * progress;
@@ -282,7 +281,9 @@ sealed class MenuUI : IDisposable
         float h2 = h * scale;
         float dx = (w - w2) / 2f;
         float dy = (h - h2) / 2f;
-        using GraphicsPath p = Round(x + dx, y + dy, w2, h2, 4);
+        using GraphicsPath path = Round(x + dx, y + dy, w2, h2, 4);
+        g.FillPath(Brush(bg), path);
+        g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), path);
         g.FillPath(Brush(bg), p);
         g.DrawPath(Pen(Color.FromArgb(90, on ? Ac : Color.FromArgb(90, 100, 120)), 1f), p);
         g.DrawString(text, fText, Brush(on ? Ac : Tx), x + w / 2f - TextW(text) / 2f, y + 2);
